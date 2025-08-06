@@ -7,6 +7,11 @@ from app.data_loader import (
     fetch_radios
 )
 
+st.set_page_config(page_title="Mensajes de Radio", layout="wide", page_icon="📻")
+
+st.title('Mensajes de Radio')
+st.markdown("Seleccione una sesión de un gran premio para acceder a los mensajes de radio y posteriormente seleccione el deseado para poder escucharlo y mostrar su transcripción.")
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 @st.cache_resource
@@ -19,11 +24,6 @@ def load_model():
                     device=device)
 
 pipe = load_model()
-
-st.set_page_config(page_title="Mensajes de Radio", layout="wide", page_icon="📻")
-
-st.title('Mensajes de Radio')
-st.markdown("Seleccione una sesión de un gran premio para acceder a los mensajes de radio y posteriormente seleccione el deseado para poder escucharlo y mostrar su transcripción.")
 
 col1, col2 = st.columns(2)
 

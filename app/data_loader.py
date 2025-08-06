@@ -1,6 +1,8 @@
 import streamlit as st
+import fastf1 as ff1
 import requests
 import pandas as pd
+import numpy as np
 from dotenv import load_dotenv
 import os
 
@@ -32,3 +34,85 @@ def fetch_sessions(meeting_key):
 def fetch_radios(session_key):
     # Devuelve los mensajes de radio para una sesión específica.
     return fetch_data("team_radio", {"session_key": session_key})
+
+@st.cache_data
+def fetch_best_pract_laps(selected_round, schedule):
+    print(f"--------   Procesando carrera nº: {selected_round} del 2025   --------")
+
+    if schedule['EventFormat'][selected_round] == 'sprint_qualifying' or schedule['EventFormat'][selected_round] == 'sprint' or schedule['EventFormat'][selected_round] == 'testing':
+        st.warning(f"Carrera {selected_round} del 2025 no válida debido al formato: {schedule['EventFormat'][selected_round]}")
+        st.stop()
+
+    if schedule['Session1'][selected_round] != 'Practice 1' or schedule['Session2'][selected_round] != 'Practice 2' or schedule['Session3'][selected_round] != 'Practice 3':
+        st.warning(f"Carrera {selected_round} del 2025 debido a la falta de sesiones de práctica.")
+        st.stop()
+
+    session_FP1 = ff1.get_session(2025, selected_round, 'FP1')
+    session_FP2 = ff1.get_session(2025, selected_round, 'FP2')
+    session_FP3 = ff1.get_session(2025, selected_round, 'FP3')
+
+    session_FP1.load(laps=True, telemetry=False, weather=False, messages=False, livedata=None)
+    session_FP2.load(laps=True, telemetry=False, weather=False, messages=False, livedata=None)
+    session_FP3.load(laps=True, telemetry=False, weather=False, messages=False, livedata=None)
+
+    try:
+        laps_FP1 = session_FP1.laps.copy()
+        laps_FP2 = session_FP2.laps.copy()
+        laps_FP3 = session_FP3.laps.copy()
+    except:
+        st.warning("No hay datos de prácticas de esta sesión, no se puede estimar.")
+        st.stop()
+
+    laps_FP1['Session'] = 'FP1'
+    laps_FP2['Session'] = 'FP2'
+    laps_FP3['Session'] = 'FP3'
+    all_laps = pd.concat([laps_FP1, laps_FP2, laps_FP3], ignore_index=True)
+
+    # Obtener los 3 mejores tiempos por piloto
+    best_laps = all_laps.sort_values(['Driver', 'LapTime'])
+    top_3_laps = best_laps.groupby('Driver').head(3)
+    
+    # Devolvemos un DataFrame con los 3 mejores tiempos y el equipo
+    driver_times = top_3_laps.groupby('Driver').agg({'LapTime': list, 'Team': 'first'})
+    
+    # Expandir las columnas de LapTime
+    lap_times = pd.DataFrame(driver_times['LapTime'].tolist(), 
+                             index=driver_times.index,
+                             columns=['Best_Lap', 'Second_Best', 'Third_Best'])
+    
+    # Combinamos todo en un único DataFrame y reseteamos el índice
+    driver_times = pd.concat([driver_times['Team'], lap_times], axis=1)
+    driver_times = driver_times.reset_index()
+
+    driver_times['Event'] = session_FP1.event.EventName
+    driver_times['Year'] = 2025
+    driver_times['RoundNumber'] = session_FP1.event.RoundNumber
+    driver_times['Avg_Last_3_Positions'] = np.nan
+    
+    return driver_times
+
+def fetch_last_3_q(selected_round, schedule):
+    q_results = pd.DataFrame()
+    i = 0
+    
+    while i < 3:
+        selected_round -= 1
+        if schedule['EventFormat'][selected_round] == 'sprint_qualifying' or schedule['Session1'][selected_round] != 'Practice 1' or schedule['Session2'][selected_round] != 'Practice 2' or schedule['Session3'][selected_round] != 'Practice 3':
+            continue
+
+        session_Q = ff1.get_session(2025, selected_round, 'Q')
+        session_Q.load(laps=True, telemetry=False, weather=False, messages=False, livedata=None)
+        results_Q = session_Q.results.copy()
+        
+        # Del mismo modo, creamos otra tabla con la posición final de cada piloto en la clasificación
+        qualifying_result = pd.DataFrame(data={'Driver': results_Q['Abbreviation'], 'Position': results_Q['Position']})
+
+        # Reseteamos el índice para que no sea el número de piloto
+        qualifying_result.reset_index(drop=True, inplace=True)
+        qualifying_result['RoundNumber'] = session_Q.event.RoundNumber
+        qualifying_result['Year'] = 2025
+
+        q_results = pd.concat([q_results, qualifying_result], ignore_index=True)
+        i += 1
+    
+    return q_results
