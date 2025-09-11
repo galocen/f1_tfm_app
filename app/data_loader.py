@@ -20,7 +20,7 @@ def fetch_data(endpoint, params=None):
     response.raise_for_status()
     return pd.DataFrame(response.json())
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def fetch_sessions(meeting_key):
     # Devuelve las sesiones de un gran premio específico.
     df = fetch_data("sessions", {"meeting_key": meeting_key})
@@ -30,15 +30,13 @@ def fetch_sessions(meeting_key):
 
     return df[["session_key", "label"]].drop_duplicates()
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def fetch_radios(session_key):
     # Devuelve los mensajes de radio para una sesión específica.
     return fetch_data("team_radio", {"session_key": session_key})
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def fetch_best_pract_laps(selected_round, schedule):
-    print(f"--------   Procesando carrera nº: {selected_round} del 2025   --------")
-
     if schedule['EventFormat'][selected_round] == 'sprint_qualifying' or schedule['EventFormat'][selected_round] == 'sprint' or schedule['EventFormat'][selected_round] == 'testing':
         st.warning(f"Carrera {selected_round} del 2025 no válida debido al formato: {schedule['EventFormat'][selected_round]}")
         st.stop()
@@ -116,3 +114,97 @@ def fetch_last_3_q(selected_round, schedule):
         i += 1
     
     return q_results
+
+@st.cache_data(show_spinner=False)
+def fetch_qualifying_results(selected_round, session):
+    try:
+        # Intentar obtener la sesión de clasificación
+        session_Q = ff1.get_session(2025, selected_round, 'Q')
+        
+        # Verificar si la sesión existe y tiene datos
+        try:
+            session_Q.load(laps=True, telemetry=False, weather=False, messages=False, livedata=None)
+        except Exception as load_error:
+            st.info(f"Los datos de clasificación para la carrera {selected_round} aún no están disponibles")
+            return {'times': {}, 'positions': {}}
+        
+        # Verificar si hay resultados disponibles
+        if not hasattr(session_Q, 'results') or session_Q.results.empty:
+            st.info(f"Los resultados de {session} para la carrera {selected_round} aún no están disponibles")
+            return {'times': {}, 'positions': {}}
+        
+        # Obtener los resultados oficiales
+        results = session_Q.results.copy()
+        
+        # Seleccionar la columna de tiempo apropiada según la sesión
+        time_column = f'{session}'
+        
+        if time_column not in results.columns:
+            
+            # Intentar con nombres alternativos de columnas
+            alternative_columns = [f'{session}_Time', f'{session.lower()}_time', f'{session.upper()}_TIME']
+            found_column = None
+            
+            for alt_col in alternative_columns:
+                if alt_col in results.columns:
+                    found_column = alt_col
+                    break
+            
+            if found_column:
+                time_column = found_column
+            else:
+                st.warning(f"No hay datos de {session} disponibles para la carrera {selected_round}")
+                return {'times': {}, 'positions': {}}
+        
+        # Crear diccionarios con los resultados
+        q_times = {}
+        q_positions = {}
+        successful_mappings = 0
+        
+        # Filtrar y ordenar por tiempo para obtener posiciones reales
+        valid_results = results[results[time_column].notna()].copy()
+        
+        if len(valid_results) > 0:
+            # Convertir tiempos a segundos para ordenar correctamente
+            def time_to_seconds(time_val):
+                if pd.isna(time_val) or time_val == pd.NaT:
+                    return float('inf')
+                if hasattr(time_val, 'total_seconds'):
+                    return time_val.total_seconds()
+                return float('inf')
+            
+            valid_results['time_seconds'] = valid_results[time_column].apply(time_to_seconds)
+            valid_results = valid_results.sort_values('time_seconds')
+            
+            # Asignar posiciones reales basadas en el orden de tiempos
+            for position, (idx, row) in enumerate(valid_results.iterrows(), 1):
+                try:
+                    driver = row['Abbreviation'] if 'Abbreviation' in row else row['DriverNumber']
+                    time_value = row[time_column]
+                    
+                    if pd.notna(time_value) and time_value != pd.NaT:
+                        # Convertir el tiempo a formato string
+                        if hasattr(time_value, 'total_seconds'):
+                            total_seconds = time_value.total_seconds()
+                            minutes = int(total_seconds // 60)
+                            seconds = total_seconds % 60
+                            formatted_time = f"{minutes}:{seconds:06.3f}"
+                            q_times[driver] = formatted_time
+                            q_positions[driver] = position
+                            successful_mappings += 1
+                        else:
+                            pass  # Tipo de tiempo no reconocido
+                    
+                except Exception as row_error:
+                    continue
+        
+        if successful_mappings > 0:
+            st.success(f"✅ Cargados {successful_mappings} tiempos de {session}")
+        else:
+            st.info(f"ℹ️ No se encontraron tiempos válidos de {session}")
+        
+        return {'times': q_times, 'positions': q_positions}
+    
+    except Exception as e:
+        st.warning(f"⚠️ Error al obtener resultados de {session} para la carrera {selected_round}: {e}")
+        return {'times': {}, 'positions': {}}
