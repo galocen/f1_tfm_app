@@ -1,11 +1,13 @@
 import streamlit as st
 from transformers import pipeline
 import torch
+import numpy as np
 from app.data_loader import (
     fetch_data,
     fetch_sessions,
     fetch_radios
 )
+from app.data_processor import download_and_process_audio
 
 st.set_page_config(page_title="Mensajes de Radio", layout="wide", page_icon="📻")
 
@@ -20,7 +22,7 @@ def load_model():
                     "openai/whisper-medium", 
                     chunk_length_s=30, 
                     stride_length_s=5, 
-                    return_timestamps=True, 
+                    return_timestamps=False, 
                     device=device)
 
 pipe = load_model()
@@ -64,8 +66,17 @@ else:
 
     st.audio(radio_url, format="audio/mp3", start_time=0)
 
-    transcription = pipe(radio_url, generate_kwargs={"language": 'English', "task": 'transcribe'})
-    formatted_transcription = transcription['text'].strip()
-
-    st.text_area(f"Transcripción:", value=formatted_transcription)
-    st.download_button("Descargar Transcripción", formatted_transcription, file_name="transcription.txt")
+    if st.button("Transcribir Audio"):
+        with st.spinner("Transcribiendo audio..."):
+            audio_data = download_and_process_audio(radio_url)
+            if audio_data is not None:
+                try:
+                    transcription = pipe(audio_data, generate_kwargs={"language": 'English', "task": 'transcribe'})
+                    formatted_transcription = transcription['text'].strip()
+                    
+                    st.text_area(f"Transcripción:", value=formatted_transcription, height=150)
+                    st.download_button("Descargar Transcripción", formatted_transcription, file_name="transcription.txt")
+                except Exception as e:
+                    st.error(f"Error en la transcripción: {str(e)}")
+            else:
+                st.error("Error al descargar el audio")

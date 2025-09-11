@@ -1,5 +1,11 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
+import io
+import requests
+import tempfile
+import os
+import librosa
 
 def avg_last_3_positions(driver_times, q_results):
     # Recorremos cada fila de driver_times para calcular la media de las posiciones de clasificación de las últimas 3 rondas
@@ -127,3 +133,28 @@ def get_team_from_dummies(df_con_dummies):
         teams.append(team)
     
     return teams
+
+def download_and_process_audio(url):
+    """Descarga y procesa el audio en memoria usando librosa"""
+    try:
+        response = requests.get(url, timeout=30)
+        if response.status_code == 200:
+            # Escribir temporalmente a disco solo para librosa
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                tmp_file.flush()  # Asegurar que se escriba
+                
+                # Cargar con librosa
+                audio, sr = librosa.load(tmp_file.name, sr=16000)
+            
+            # Limpiar archivo temporal
+            try:
+                os.unlink(tmp_file.name)
+            except (PermissionError, FileNotFoundError):
+                pass
+                
+            return audio
+        return None
+    except Exception as e:
+        st.error(f"Error al procesar audio: {str(e)}")
+        return None

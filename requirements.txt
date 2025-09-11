@@ -3,8 +3,10 @@ transformers
 torch
 python-dotenv
 fastf1
-sklearn
+scikit-learn
 pandas
 numpy
 xgboost
 lightgbm
+librosa
+soundfile
