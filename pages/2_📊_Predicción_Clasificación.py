@@ -21,7 +21,7 @@ st.info("""
 3. **Q2**: Una vez completada Q1, aparecerá el botón "🏁 Hacer Predicciones Q2" → Se calcula y muestra la predicción de la Q2.
 4. **Q3**: Tras Q2, aparecerá "🏁 Hacer Predicciones Q3" → Se calcula y muestra la predicción de la Q3.
 
-**🔄 Reset**: Se puede usar "🔄 Empezar de Nuevo" o cambiar el desplegable de selección de carrera para cambiar de carrera o reiniciar el proceso.
+**🔄 Reset**: Se puede usar "🔄 Reset Predicciones" o cambiar el desplegable de selección de carrera para cambiar de carrera o reiniciar el proceso.
 """)
 
 st.markdown("---")
@@ -102,7 +102,7 @@ if predict_q1_button or st.session_state.predictions_made:
             drivers = get_driver_from_dummies(driver_times)
             teams = get_team_from_dummies(driver_times)
 
-            # 5. Almacenar datos procesados para reutilizar en Q2 y Q3 (eficiencia)
+            # 5. Almacenar datos procesados para reutilizar en Q2 y Q3
             st.session_state.driver_times_processed = driver_times.copy()
 
             # 6. Crear DataFrame con resultados organizados y formateados para visualización
@@ -115,7 +115,7 @@ if predict_q1_button or st.session_state.predictions_made:
                 'Real Position': None       # Se completará con posiciones reales si están disponibles
             }).sort_values(by='Q1 Predicted Time').reset_index(drop=True)
             
-            # 7. Asignar posiciones predichas secuenciales (1, 2, 3, ...)
+            # 7. Asignar de las posiciones predichas
             results_df['Predicted Position'] = range(1, len(results_df) + 1)
             
             st.session_state.q1_results = results_df
@@ -143,10 +143,9 @@ if predict_q1_button or st.session_state.predictions_made:
                     q1_real_positions = q1_real_data['positions']
                     
                     # ALGORITMO DE MATCHING: Asociar pilotos de predicción con resultados reales
-                    # Maneja diferencias en nombres (abreviaciones, orden, etc.)
                     for idx, row in st.session_state.q1_results.iterrows():
                         driver = row['Driver']
-                        # Estrategia 1: Buscar coincidencia exacta (más confiable)
+                        # Buscar coincidencia exacta (más confiable)
                         matched = False
                         for real_driver, real_time in q1_real_results.items():
                             if driver == real_driver:
@@ -154,16 +153,6 @@ if predict_q1_button or st.session_state.predictions_made:
                                 st.session_state.q1_results.loc[idx, 'Real Position'] = q1_real_positions.get(real_driver, None)
                                 matched = True
                                 break
-                        
-                        # Estrategia 2: Si no hay coincidencia exacta, buscar similitud parcial
-                        if not matched:
-                            for real_driver, real_time in q1_real_results.items():
-                                # Verificar similitud suficiente para match confiable
-                                if (len(driver) >= 3 and len(real_driver) >= 3 and 
-                                    (driver[:3] == real_driver[:3] or driver in real_driver or real_driver in driver)):
-                                    st.session_state.q1_results.loc[idx, 'Q1 Result Time'] = real_time
-                                    st.session_state.q1_results.loc[idx, 'Real Position'] = q1_real_positions.get(real_driver, None)
-                                    break
                     
                     # REORDENAMIENTO POR DATOS REALES: Priorizar orden oficial cuando esté disponible
                     if 'Real Position' in st.session_state.q1_results.columns and st.session_state.q1_results['Real Position'].notna().any():
@@ -230,20 +219,19 @@ if predict_q1_button or st.session_state.predictions_made:
                         if st.session_state.driver_times_processed is not None:
                             # FILTRADO DE PILOTOS: Seleccionar top 15 basado en posiciones reales o predichas
                             if 'Real Position' in st.session_state.q1_results.columns:
-                                # Prioridad: usar posiciones oficiales de Q1 si están disponibles
+                                # Usar posiciones oficiales de Q1 si están disponibles
                                 top15_q1 = st.session_state.q1_results[
                                     (st.session_state.q1_results['Real Position'] >= 1) & 
                                     (st.session_state.q1_results['Real Position'] <= 15)
                                 ].copy()
                             else:
-                                # Fallback: usar predicciones Q1 como criterio (primeros 15)
+                                # Si no están disponibles, usar predicciones Q1 como criterio (primeros 15)
                                 top15_q1 = st.session_state.q1_results.head(15).copy()
                             
                             # MAPEO DE PILOTOS CLASIFICADOS: Lista de nombres que avanzan a Q2
                             qualified_drivers = top15_q1['Driver'].tolist()
                             
                             # RECUPERACIÓN DE DATOS BASE: Extraer pilotos de datos procesados originales
-                            from app.data_processor import get_driver_from_dummies
                             all_drivers = get_driver_from_dummies(st.session_state.driver_times_processed)
                             
                             # MATCHING DE ÍNDICES: Encontrar posiciones de pilotos clasificados

@@ -57,7 +57,6 @@ with col1:
     selected_year = st.selectbox("Selecciona un año:", available_years, index=len(available_years) - 1)
 
     # OBTENCIÓN DE DATOS: Cargar todos los Grandes Premios del año seleccionado
-    # OBTENCIÓN DE DATOS: Cargar todos los Grandes Premios del año seleccionado
     all_meetings = fetch_data("meetings", {"year": selected_year})
 
     # Validación de disponibilidad de datos
